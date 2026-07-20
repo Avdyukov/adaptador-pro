@@ -23,16 +23,16 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .stApp {
-        background: linear-gradient(-45deg, #0a0a0f, #1a0a2e, #0f0f23, #0a0a0f);
-        background-size: 400% 400%;
-        animation: gradient 15s ease infinite;
-    }
-    
     @keyframes gradient {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
+    }
+    
+    .stApp {
+        background: linear-gradient(-45deg, #0a0a0f, #1a0a2e, #0f0f23, #0a0a0f);
+        background-size: 400% 400%;
+        animation: gradient 15s ease infinite;
     }
     
     .main-header {
@@ -73,28 +73,35 @@ st.markdown("""
         border: 1px solid rgba(155, 89, 182, 0.3);
         color: #c9d1d9;
         font-size: 1.1rem;
-        line-height: 2;
+        line-height: 1.8;
         box-shadow: 0 0 30px rgba(155, 89, 182, 0.05);
+        min-height: 100px;
     }
     
-    .word-btn {
-        display: inline-block;
-        background: rgba(79, 172, 254, 0.1);
+    .original-box {
+        border-left-color: #2ecc71 !important;
+    }
+    
+    .translated-box {
+        border-left-color: #4facfe !important;
+    }
+    
+    .parallel-line-ru {
+        padding: 0.5rem;
+        margin-bottom: 0.2rem;
+        border-radius: 6px;
+        background: rgba(22, 27, 34, 0.3);
+        border-left: 3px solid #2ecc71;
+        color: #c9d1d9;
+    }
+    
+    .parallel-line-es {
+        padding: 0.5rem;
+        margin-bottom: 0.2rem;
+        border-radius: 6px;
+        background: rgba(22, 27, 34, 0.3);
+        border-left: 3px solid #4facfe;
         color: #4facfe;
-        padding: 0.1rem 0.4rem;
-        margin: 0.05rem;
-        border-radius: 4px;
-        border: 1px solid rgba(79, 172, 254, 0.2);
-        cursor: pointer;
-        font-size: 1.1rem;
-        transition: all 0.2s ease;
-        font-family: inherit;
-    }
-    
-    .word-btn:hover {
-        background: rgba(79, 172, 254, 0.3);
-        transform: scale(1.05);
-        box-shadow: 0 0 20px rgba(79, 172, 254, 0.2);
     }
     
     .stButton button {
@@ -190,6 +197,14 @@ st.markdown("""
         background: linear-gradient(135deg, #2ecc71, #27ae60);
         color: #0e1117;
     }
+    
+    .download-section {
+        background: rgba(22, 27, 34, 0.5);
+        padding: 1rem;
+        border-radius: 12px;
+        border: 1px solid rgba(155, 89, 182, 0.1);
+        margin-top: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -211,10 +226,6 @@ if "dictionary" not in st.session_state:
     st.session_state.dictionary = {}
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
-if "selected_word" not in st.session_state:
-    st.session_state.selected_word = ""
-if "word_translation" not in st.session_state:
-    st.session_state.word_translation = ""
 
 # ============================================
 # ЯЗЫКИ
@@ -314,9 +325,7 @@ def traducir_texto(texto, nivel, api_key, estilo, target_lang, dialect):
 
 def get_word_translation(word, api_key, target_lang):
     """Получает перевод слова через DeepSeek"""
-    lang_name = LANGUAGES[target_lang]["name"]
-    
-    prompt = f"""Дай перевод слова '{word}' с испанского на русский и пример использования в предложении.
+    prompt = f"""Дай перевод слова '{word}' на русский и пример использования в предложении.
 
 Формат ответа:
 Перевод: ...
@@ -339,12 +348,15 @@ def get_stats(texto):
     palabras = re.findall(r'\b[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]+\b', texto)
     return {"words": len(palabras), "unique": len(set(palabras)), "chars": len(texto)}
 
+def split_sentences(texto):
+    return [s.strip() for s in re.split(r'[.!?]\s*', texto) if s.strip()]
+
 # ============================================
 # ИНТЕРФЕЙС
 # ============================================
 
 st.markdown('<p class="main-header">🚀 Adaptador Pro</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">✨ Перевод и адаптация текстов • Нажми на слово — узнай перевод!</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">✨ Перевод и адаптация текстов • Сохранение в 3 форматах • Словарь</p>', unsafe_allow_html=True)
 
 # ============================================
 # САЙДБАР
@@ -409,7 +421,7 @@ with st.sidebar:
     with col1:
         st.metric("📝 Переводов", st.session_state.stats["translations"])
     with col2:
-        st.metric("📚 Слов в словаре", len(st.session_state.dictionary))
+        st.metric("📚 Слов", st.session_state.stats["words"])
 
 # ============================================
 # ОСНОВНАЯ ОБЛАСТЬ
@@ -422,7 +434,7 @@ with col_left:
     
     texto = st.text_area(
         "",
-        height=350,
+        height=300,
         placeholder="Введите текст на русском...",
         key="input_text",
         label_visibility="collapsed"
@@ -450,15 +462,6 @@ with col_left:
 with col_right:
     st.markdown(f'<div class="card"><b>{lang_info["flag"]} Перевод на {lang_info["name"]}</b></div>', unsafe_allow_html=True)
     
-    # Кнопки переключения
-    col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1:
-        show_parallel = st.toggle("📖 Параллельный", value=False)
-    with col_t2:
-        show_words = st.toggle("🔤 Слова для изучения", value=False)
-    with col_t3:
-        show_dict = st.toggle("📚 Словарь", value=False)
-    
     if btn_translate:
         if not texto:
             st.error("⚠️ Введите текст для перевода")
@@ -478,142 +481,99 @@ with col_right:
                     stats = get_stats(result)
                     st.session_state.stats["words"] += stats["words"]
                     
-                    st.session_state.history.insert(0, {
-                        "lang": lang_info["flag"],
-                        "time": datetime.now().strftime("%H:%M"),
-                        "preview": result[:100]
-                    })
-                    
                     st.success("✅ Перевод готов!")
                     
                 except Exception as e:
                     st.error(f"❌ Ошибка: {str(e)}")
     
     if st.session_state.result:
-        # === ОСНОВНОЙ ПЕРЕВОД С КЛИКАБЕЛЬНЫМИ СЛОВАМИ ===
-        st.markdown("#### 📄 Перевод:")
+        # === 1. ТОЛЬКО ПЕРЕВОД ===
+        st.markdown("#### 📄 Текст на языке перевода")
+        st.markdown(f'<div class="result-box translated-box">{st.session_state.result}</div>', unsafe_allow_html=True)
         
-        # Разбиваем текст на слова и делаем их кликабельными
-        words = re.findall(r'(\b[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]+\b|\s+|[.,!?;:])', st.session_state.result)
+        # === 2. ТОЛЬКО ОРИГИНАЛ ===
+        with st.expander("📄 Текст на языке оригинала", expanded=False):
+            st.markdown(f'<div class="result-box original-box">{st.session_state.original}</div>', unsafe_allow_html=True)
         
-        # Контейнер для слов
-        word_container = st.container()
-        
-        # Создаём строку с кнопками для каждого слова
-        cols = st.columns([1] * min(len(words), 10))
-        col_idx = 0
-        
-        for token in words:
-            if re.match(r'^\s+$', token):
-                # Пробел
-                st.markdown("&nbsp;", unsafe_allow_html=True)
-            elif re.match(r'^[.,!?;:]$', token):
-                # Знак препинания
-                st.markdown(token)
-            else:
-                word = token.strip()
-                if word:
-                    # Кнопка для слова
-                    if st.button(
-                        word,
-                        key=f"word_{word}_{col_idx}",
-                        help=f"Нажми, чтобы узнать перевод слова '{word}'"
-                    ):
-                        st.session_state.selected_word = word
-                        if api_key:
-                            try:
-                                translation = get_word_translation(word, api_key, target_lang)
-                                st.session_state.word_translation = translation
-                                
-                                # Добавляем в словарь
-                                if word not in st.session_state.dictionary:
-                                    st.session_state.dictionary[word] = 0
-                                st.session_state.dictionary[word] += 1
-                                
-                                st.rerun()
-                            except Exception as e:
-                                st.session_state.word_translation = f"❌ Ошибка: {str(e)}"
-                        else:
-                            st.session_state.word_translation = "⚠️ Введите API ключ для перевода слова"
-                        st.rerun()
-                col_idx += 1
-        
-        # === ПОКАЗ ПЕРЕВОДА СЛОВА ===
-        if st.session_state.selected_word and st.session_state.word_translation:
-            st.markdown("---")
-            st.markdown(f"**📖 Слово:** `{st.session_state.selected_word}`")
-            st.markdown(f"**📝 Перевод:**\n{st.session_state.word_translation}")
+        # === 3. ПОСТРОЧНО (разными цветами) ===
+        with st.expander("📖 Построчный перевод", expanded=True):
+            ru_sentences = split_sentences(st.session_state.original)
+            es_sentences = split_sentences(st.session_state.result)
             
-            if st.button("🗑️ Очистить перевод слова"):
-                st.session_state.selected_word = ""
-                st.session_state.word_translation = ""
-                st.rerun()
+            for ru, es in zip(ru_sentences, es_sentences):
+                st.markdown(f'<div class="parallel-line-es">🇪🇸 {es}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="parallel-line-ru">🇷🇺 {ru}</div>', unsafe_allow_html=True)
+                st.markdown("---")
         
-        # === ПАРАЛЛЕЛЬНЫЙ ТЕКСТ ===
-        if show_parallel and st.session_state.original:
-            st.markdown("---")
-            st.markdown("#### 📖 Параллельный текст")
-            
-            ru_sentences = [s.strip() for s in st.session_state.original.split(". ") if s.strip()]
-            es_sentences = [s.strip() for s in st.session_state.result.split(". ") if s.strip()]
-            
-            for r, e in zip(ru_sentences, es_sentences):
-                st.markdown(f"""
-                <div style="padding: 0.5rem; margin-bottom: 0.3rem; border-radius: 8px; background: rgba(22,27,34,0.5); border-left: 3px solid #4facfe;">
-                    <div style="color: #c9d1d9;">🇷🇺 {r}</div>
-                    <div style="color: #4facfe; margin-top: 0.2rem;">{lang_info['flag']} {e}</div>
-                </div>
-                """, unsafe_allow_html=True)
+        # === 4. СОХРАНЕНИЕ В ФАЙЛ ===
+        st.markdown("#### 💾 Сохранить")
         
-        # === СЛОВА ДЛЯ ИЗУЧЕНИЯ ===
-        if show_words:
-            st.markdown("---")
-            st.markdown("#### 🔤 Слова для изучения")
-            
-            all_words = re.findall(r'\b[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]+\b', st.session_state.result.lower())
-            unique_words = sorted(set(all_words))
-            
-            cols = st.columns(4)
-            for i, w in enumerate(unique_words[:40]):
-                cols[i % 4].markdown(f'<span class="dict-word">{w}</span>', unsafe_allow_html=True)
-            if len(unique_words) > 40:
-                st.caption(f"... и ещё {len(unique_words) - 40} слов")
+        col_save1, col_save2, col_save3 = st.columns(3)
         
-        # === СЛОВАРЬ ===
-        if show_dict and st.session_state.dictionary:
-            st.markdown("---")
-            st.markdown("#### 📚 Твой словарь")
-            
-            sorted_words = sorted(st.session_state.dictionary.items(), key=lambda x: x[1], reverse=True)
-            
-            for word, count in sorted_words[:30]:
-                st.markdown(f"`{word}` — {count} раз(а)")
-            if len(sorted_words) > 30:
-                st.caption(f"... и ещё {len(sorted_words) - 30} слов")
-        
-        # === КНОПКИ ДЕЙСТВИЙ ===
-        st.markdown("---")
-        col_a1, col_a2, col_a3 = st.columns(3)
-        with col_a1:
+        # Файл 1: Только перевод
+        with col_save1:
             st.download_button(
-                "💾 Скачать перевод",
+                "📄 Только перевод",
                 st.session_state.result,
-                file_name=f"traduccion_{target_lang}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                file_name=f"traduccion_{target_lang}.txt",
                 use_container_width=True
             )
-        with col_a2:
-            if st.button("⭐ В избранное", use_container_width=True):
-                st.session_state.favorites.append({
-                    "original": st.session_state.original[:200],
-                    "translation": st.session_state.result[:200],
-                    "lang": lang_info["flag"],
-                    "time": datetime.now().strftime("%Y-%m-%d %H:%M")
-                })
-                st.success("✅ Добавлено в избранное!")
-        with col_a3:
-            if st.button("📋 Копировать", use_container_width=True):
-                st.write("✅ Скопировано в буфер!")
-                st.balloons()
+        
+        # Файл 2: Оригинал + перевод
+        with col_save2:
+            full_text = f"===== ОРИГИНАЛ =====\n{st.session_state.original}\n\n===== ПЕРЕВОД =====\n{st.session_state.result}"
+            st.download_button(
+                "📄 Оригинал + перевод",
+                full_text,
+                file_name=f"original_traduccion_{target_lang}.txt",
+                use_container_width=True
+            )
+        
+        # Файл 3: Построчно (цветной)
+        with col_save3:
+            parallel_text = "===== ПОСТРОЧНЫЙ ПЕРЕВОД =====\n\n"
+            ru_sentences = split_sentences(st.session_state.original)
+            es_sentences = split_sentences(st.session_state.result)
+            for ru, es in zip(ru_sentences, es_sentences):
+                parallel_text += f"🇪🇸 {es}\n"
+                parallel_text += f"🇷🇺 {ru}\n\n"
+            
+            st.download_button(
+                "📄 Построчный",
+                parallel_text,
+                file_name=f"paralelo_{target_lang}.txt",
+                use_container_width=True
+            )
+        
+        # === 5. СЛОВАРЬ (добавление слова) ===
+        st.markdown("#### 📚 Добавить слово в словарь")
+        
+        col_word1, col_word2 = st.columns([2, 1])
+        with col_word1:
+            word_input = st.text_input("Введите слово", placeholder="Например: casa", key="word_input")
+        with col_word2:
+            btn_add_word = st.button("➕ Добавить", use_container_width=True)
+        
+        if btn_add_word and word_input:
+            if not api_key:
+                st.error("⚠️ Введите API ключ")
+            else:
+                try:
+                    translation = get_word_translation(word_input, api_key, target_lang)
+                    if word_input not in st.session_state.dictionary:
+                        st.session_state.dictionary[word_input] = 0
+                    st.session_state.dictionary[word_input] += 1
+                    st.success(f"✅ Слово '{word_input}' добавлено в словарь!")
+                    st.info(f"📝 {translation}")
+                except Exception as e:
+                    st.error(f"❌ Ошибка: {str(e)}")
+        
+        # === 6. ПОКАЗ СЛОВАРЯ ===
+        if st.session_state.dictionary:
+            with st.expander("📚 Твой словарь", expanded=False):
+                sorted_words = sorted(st.session_state.dictionary.items(), key=lambda x: x[1], reverse=True)
+                for word, count in sorted_words:
+                    st.markdown(f"`{word}` — {count} раз(а)")
         
     else:
         st.info("👈 Введите текст и нажмите 'Перевести'")
