@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # ============================================
-# СУПЕР-ПИЗДАТЫЙ ДИЗАЙН
+# ПИЗДАТЫЙ ДИЗАЙН + JAVASCRIPT ДЛЯ ХОВЕРА
 # ============================================
 
 st.markdown("""
@@ -90,9 +90,10 @@ st.markdown("""
         border: 1px solid rgba(155, 89, 182, 0.3);
         color: #c9d1d9;
         font-size: 1.1rem;
-        line-height: 1.8;
+        line-height: 2.2;
         box-shadow: 0 0 30px rgba(155, 89, 182, 0.05);
         transition: all 0.3s ease;
+        min-height: 100px;
     }
     
     .result-box:hover {
@@ -100,32 +101,64 @@ st.markdown("""
         border-color: rgba(155, 89, 182, 0.6);
     }
     
-    .parallel-line {
-        padding: 0.7rem;
-        margin-bottom: 0.5rem;
-        border-radius: 8px;
-        background: rgba(22, 27, 34, 0.5);
-        border-left: 3px solid #4facfe;
-        transition: all 0.3s ease;
-    }
-    
-    .parallel-line:hover {
-        background: rgba(22, 27, 34, 0.8);
-        transform: translateX(5px);
-        border-left-color: #f5576c;
-    }
-    
-    .original-text {
+    /* Стили для кликабельных слов */
+    .clickable-word {
+        display: inline-block;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        padding: 0 2px;
+        border-radius: 4px;
         color: #c9d1d9;
-        font-size: 0.95rem;
-        opacity: 0.9;
+        position: relative;
     }
     
-    .translated-text {
+    .clickable-word:hover {
         color: #4facfe;
-        margin-top: 0.2rem;
+        background: rgba(79, 172, 254, 0.1);
+        transform: scale(1.05);
+        box-shadow: 0 0 20px rgba(79, 172, 254, 0.2);
+    }
+    
+    /* Тултип */
+    .word-tooltip {
+        display: none;
+        position: fixed;
+        background: rgba(22, 27, 34, 0.95);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(155, 89, 182, 0.3);
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        z-index: 9999;
+        max-width: 350px;
+        min-width: 200px;
+        pointer-events: none;
+        transition: all 0.2s ease;
+    }
+    
+    .word-tooltip.visible {
+        display: block;
+    }
+    
+    .word-tooltip .word {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #4facfe;
+        margin-bottom: 0.3rem;
+    }
+    
+    .word-tooltip .translation {
         font-size: 0.95rem;
-        font-weight: 500;
+        color: #c9d1d9;
+        margin-bottom: 0.3rem;
+    }
+    
+    .word-tooltip .example {
+        font-size: 0.85rem;
+        color: #8b949e;
+        font-style: italic;
+        border-top: 1px solid rgba(155, 89, 182, 0.1);
+        padding-top: 0.3rem;
     }
     
     .stButton button {
@@ -281,7 +314,114 @@ st.markdown("""
         border-color: #f5576c;
         transform: scale(1.05);
     }
+    
+    .example-text {
+        color: #8b949e;
+        font-size: 0.9rem;
+        padding: 1rem;
+        background: rgba(22, 27, 34, 0.3);
+        border-radius: 8px;
+        border-left: 3px solid #4facfe;
+        margin: 0.5rem 0;
+    }
+    
+    /* Анимированная кнопка примеров */
+    @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(245, 87, 108, 0.3); }
+        50% { box-shadow: 0 0 40px rgba(245, 87, 108, 0.6); }
+    }
+    
+    .btn-example {
+        animation: pulse-glow 2s ease-in-out infinite;
+    }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Функция для обработки кликов по словам
+    function makeWordsClickable() {
+        const container = document.querySelector('.result-box');
+        if (!container) return;
+        
+        const text = container.innerText;
+        const words = text.split(/(\\s+)/);
+        
+        container.innerHTML = '';
+        words.forEach(word => {
+            if (word.trim().length > 0 && word.match(/[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]/)) {
+                const span = document.createElement('span');
+                span.className = 'clickable-word';
+                span.textContent = word;
+                span.dataset.word = word.replace(/[^a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]/g, '');
+                span.onmouseenter = function(e) {
+                    showTooltip(e, this.dataset.word);
+                };
+                span.onmouseleave = hideTooltip;
+                container.appendChild(span);
+            } else {
+                const textNode = document.createTextNode(word);
+                container.appendChild(textNode);
+            }
+        });
+    }
+    
+    function showTooltip(event, word) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'word-tooltip visible';
+        tooltip.innerHTML = `
+            <div class="word">📖 ${word}</div>
+            <div class="translation">⏳ Загрузка перевода...</div>
+            <div class="example">Пример: (загрузка...)</div>
+        `;
+        document.body.appendChild(tooltip);
+        
+        // Запрос к серверу за переводом
+        fetch('/_stcore/translate_word', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({word: word})
+        })
+        .then(response => response.json())
+        .then(data => {
+            tooltip.innerHTML = `
+                <div class="word">📖 ${word}</div>
+                <div class="translation">📝 ${data.translation || 'Нет перевода'}</div>
+                <div class="example">💡 ${data.example || 'Нет примера'}</div>
+            `;
+        })
+        .catch(() => {
+            tooltip.innerHTML = `
+                <div class="word">📖 ${word}</div>
+                <div class="translation">❌ Ошибка загрузки</div>
+            `;
+        });
+        
+        const rect = event.target.getBoundingClientRect();
+        tooltip.style.left = Math.min(rect.left, window.innerWidth - 370) + 'px';
+        tooltip.style.top = (rect.top - 20) + 'px';
+        
+        window._currentTooltip = tooltip;
+    }
+    
+    function hideTooltip() {
+        if (window._currentTooltip) {
+            window._currentTooltip.remove();
+            window._currentTooltip = null;
+        }
+    }
+    
+    // Следим за изменением контента
+    const observer = new MutationObserver(function() {
+        makeWordsClickable();
+    });
+    
+    const container = document.querySelector('.result-box');
+    if (container) {
+        observer.observe(container, {childList: true, subtree: true});
+        makeWordsClickable();
+    }
+});
+</script>
 """, unsafe_allow_html=True)
 
 # ============================================
@@ -302,6 +442,14 @@ if "dictionary" not in st.session_state:
     st.session_state.dictionary = {}
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
+if "examples" not in st.session_state:
+    st.session_state.examples = [
+        "Вчера я посетил удивительный музей современного искусства, который находится в центре города. Экспозиция включала множество интерактивных инсталляций, которые поражали воображение посетителей.",
+        "Мой друг из Барселоны рассказал мне историю о старом маяке на побережье. Говорят, что ночью там можно увидеть призрака старого смотрителя.",
+        "Завтра мы планируем отправиться в путешествие по Андалусии и посетить Гранаду, Севилью и Кордову. Это будет незабываемая поездка.",
+        "Изучение иностранных языков открывает новые возможности для общения и путешествий. Каждый новый язык — это новый мир.",
+        "Замечательная английская народная сказка про трёх поросят в изложении Анны Деус рассказывает поучительную, весёлую историю, одну из самых популярных среди детей всего мира."
+    ]
 
 # ============================================
 # ЯЗЫКИ
@@ -413,7 +561,7 @@ def update_dictionary(texto):
 # ============================================
 
 st.markdown('<p class="main-header">🚀 Adaptador Pro</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">✨ Перевод и адаптация текстов с AI-магией</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">✨ Перевод и адаптация текстов с AI-магией. Наведи на слово — узнай перевод!</p>', unsafe_allow_html=True)
 
 # ============================================
 # САЙДБАР
@@ -458,7 +606,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Выбор стиля
     style_preset = st.selectbox(
         "🎨 Стиль перевода",
         list(STYLE_EXAMPLES.keys()),
@@ -493,7 +640,7 @@ with st.sidebar:
     
     if st.session_state.dictionary:
         st.divider()
-        st.markdown("### 📚 Словарь")
+        st.markdown("### 📚 Топ слов")
         most_common = sorted(st.session_state.dictionary.items(), key=lambda x: x[1], reverse=True)[:10]
         for word, count in most_common:
             st.markdown(f"`{word}` — {count} раз(а)")
@@ -536,7 +683,7 @@ with col_left:
     with col_btn2:
         btn_clear = st.button("🗑️ Очистить", use_container_width=True)
     with col_btn3:
-        btn_random = st.button("🎲 Пример", use_container_width=True)
+        btn_random = st.button("🎲 Пример", use_container_width=True, key="example_btn")
     
     if btn_clear:
         st.session_state.result = ""
@@ -544,14 +691,7 @@ with col_left:
         st.rerun()
     
     if btn_random:
-        ejemplos = [
-            "Вчера я посетил удивительный музей современного искусства, который находится в центре города. Экспозиция включала множество интерактивных инсталляций, которые поражали воображение посетителей.",
-            "Мой друг из Барселоны рассказал мне историю о старом маяке на побережье. Говорят, что ночью там можно увидеть призрака старого смотрителя.",
-            "Завтра мы планируем отправиться в путешествие по Андалусии и посетить Гранаду, Севилью и Кордову. Это будет незабываемая поездка.",
-            "Изучение иностранных языков открывает новые возможности для общения и путешествий. Каждый новый язык — это новый мир.",
-            "Замечательная английская народная сказка про трёх поросят в изложении Анны Деус рассказывает поучительную, весёлую историю, одну из самых популярных среди детей всего мира."
-        ]
-        st.session_state.input_text = random.choice(ejemplos)
+        st.session_state.input_text = random.choice(st.session_state.examples)
         st.rerun()
 
 with col_right:
@@ -592,10 +732,8 @@ with col_right:
                     stats = get_stats(result)
                     st.session_state.stats["words"] += stats["words"]
                     
-                    # Обновляем словарь
                     update_dictionary(result)
                     
-                    # Сохраняем в историю
                     st.session_state.history.insert(0, {
                         "lang": lang_info["flag"],
                         "time": datetime.now().strftime("%H:%M"),
@@ -608,7 +746,11 @@ with col_right:
                     st.error(f"❌ Ошибка: {str(e)}")
     
     if st.session_state.result:
-        st.markdown(f'<div class="result-box">{st.session_state.result}</div>', unsafe_allow_html=True)
+        # Основной результат с кликабельными словами
+        st.markdown(f'<div class="result-box" id="translation-result">{st.session_state.result}</div>', unsafe_allow_html=True)
+        
+        # Информация о ховере
+        st.info("💡 Наведи на любое слово в переводе, чтобы увидеть его перевод и пример использования!")
         
         col_a1, col_a2, col_a3 = st.columns(3)
         with col_a1:
